@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes hotspot markdown from https://hotspot.api4claw.com/hotspots/latest and presents it to end users. On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, platform-filtered output, or when a cron message triggers this skill.
+description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest (response may be markdown text or image/binary) and presents it to end users. On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, platform-filtered output, or when a cron message triggers this skill.
 ---
 
 # OpenClaw Hotspot Consumer Skill
@@ -23,7 +23,7 @@ openclaw cron add \
   --announce \
   --channel last \
   --to "当前会话的用户ID（自动替换）" \
-  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest，按本 skill 的 Output Rules 展示完整内容（含 AI 摘要与各平台区块）。'
+  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；响应可能是 markdown 或图片，按本 skill Output Rules 完整展示。'
 ```
 
 - 默认周期 `*/5 * * * *`（每 5 分钟一次）；若用户要求更低频，可改为 `*/15 * * * *` 或 `*/30 * * * *`，修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
@@ -40,7 +40,7 @@ openclaw cron add \
 
 当消息为上述 `--message` 内容，或明确要求执行 **hotspots** / 最新热点：
 
-1. 视为 **latest hotspot**：对 `GET https://hotspot.api4claw.com/hotspots/latest` 请求一次（除非用户只要 status 或单平台；定时默认输出完整最新内容）。
+1. 视为 **latest hotspot**：对 `GET https://hotspot.api4claw.com/hotspots/latest` 请求一次（除非用户只要 status 或单平台；定时默认输出完整最新内容）。按 `Content-Type` 处理 markdown 或图片。
 2. 遵循本文件 **Output Rules** 与 **Reliability Rules**。
 3. 不因来自自动化而省略步骤；输出应与用户手动「拉取最新热点」一致。
 
@@ -50,9 +50,9 @@ This skill is only for Consumer behavior.
 
 Use this skill when users ask to:
 
-- read latest hotspot markdown
+- read or view latest hotspot content (markdown and/or image from `/hotspots/latest`)
 - check hotspot service status
-- view one platform section from hotspot markdown
+- view one platform section when the payload is markdown (section slicing does not apply to image-only responses)
 
 Do not include Publisher generation logic or Server upload/storage internals in responses.
 
@@ -64,24 +64,26 @@ Base URL:
 
 Only endpoint:
 
-- `GET /hotspots/latest`: fetch latest markdown content.
+- `GET /hotspots/latest`: fetch the latest hotspot **payload**. The body may be **markdown text** (e.g. `Content-Type: text/markdown` or `text/plain`) or **image content** (e.g. `image/png`, `image/jpeg`, `image/webp`, `image/gif`). Treat according to the response `Content-Type` and body.
 
 ## Consumer Workflow
 
 For each user intent:
 
-- `latest hotspot`: call `GET /hotspots/latest`, then display.
-- `status`: call `GET /hotspots/latest`, then report reachable/unreachable.
-- `platform filter`: fetch markdown first, then locally slice by section keyword.
+- `latest hotspot`: call `GET /hotspots/latest`, inspect `Content-Type` and body, then display:
+  - **Markdown (or plain text treated as markdown)**: render as usual; apply platform filter and Output Rules below.
+  - **Image**: show the image inline to the user; do not pretend missing text sections exist. If the API returns a redirect or signed URL to an image, follow it and display the final image.
+- `status`: call `GET /hotspots/latest`, then report reachable/unreachable (same as today; status does not depend on markdown vs image).
+- `platform filter`: only when the fetched body is **markdown** (or text with recognizable section headers): fetch first, then locally slice by section keyword. If the response is **image-only**, state that platform filtering does not apply and show the image (or describe accessibility constraints if images cannot be shown).
 
-Platform filter targets:
+Platform filter targets (markdown sections only):
 
 - `weibo`
 - `zhihu`
 - `xiaohongshu`
 - `cctv`
 
-Always keep the AI summary block when returning filtered output.
+When returning **filtered markdown** output, always keep the AI summary block. Image responses have no section slice; preserve the full image.
 
 ## Configuration
 
@@ -96,16 +98,25 @@ Recommended defaults:
 
 ## Output Rules
 
-When showing hotspot content:
+When showing hotspot content, branch on format:
 
-1. show update time if available
-2. show AI summary block first
+**If the response is markdown (or text with the same structure):**
+
+1. show update time if available (from body headers or markdown metadata if present)
+2. show AI summary block first when present in the body
 3. show platform sections in stable order:
    - Weibo
    - Zhihu
    - Xiaohongshu
    - CCTV
 4. if partial/missing, explicitly list unavailable sections
+
+**If the response is an image:**
+
+1. display the image (or provide the image URL if the client cannot embed bytes)
+2. show update time if available (`Last-Modified`, `Date`, or filename/metadata if any)
+3. do not invent markdown sections or an AI summary block that are not in the response
+4. if multiple images are returned by the API (e.g. multipart or JSON with URLs), show each in a consistent order
 
 When showing status:
 
@@ -117,6 +128,7 @@ When showing status:
 
 - If `/hotspots/latest` fails, return explicit failure reason.
 - Do not fabricate content when server is unreachable.
+- For **image** responses: if decode or display fails, say so and offer the raw URL or content-type if available; do not substitute with unrelated markdown.
 - Return explicit degraded reason and a next action.
 - Keep responses concise and user-facing.
 
