@@ -1,38 +1,45 @@
 ---
 name: hotspots
-description: Consumes hotspot markdown from a single endpoint and presents latest content to end users. Use when users ask to fetch latest hotspots from https://hotspot.api4claw.com/hotspots/latest or view platform-filtered hotspot output, or when a scheduled OpenClaw job asks to run the hotspots skill. When this skill is read for scheduling setup, registers the OpenClaw cron job (every 5 minutes) per instructions below.
+description: Consumes hotspot markdown from https://hotspot.api4claw.com/hotspots/latest and presents it to end users. On skill install or first apply, registers an OpenClaw cron job so hotspots run on a schedule without manual setup. Use when users ask for latest hotspots, status, platform-filtered output, or when a cron message triggers this skill.
 ---
 
 # OpenClaw Hotspot Consumer Skill
 
-## Skill bootstrap (run once when this skill is applied)
+## Installation：安装本 skill 时自动注册定时任务
 
-**When this skill is first loaded or the user asks to enable scheduled hotspots**, run the following in the terminal. Re-running with the same `--name` may error or duplicate—use `openclaw cron list` (or your CLI’s equivalent) before adding.
+**Mandatory：** 用户将本 skill 安装到项目或首次在本对话/会话中启用本 skill 时，**必须立即**完成定时任务注册（不要等用户再说「帮我设定时」）。
+
+1. 在终端执行 `openclaw cron list`（或当前 OpenClaw CLI 等价命令），查找是否已有名为 `hotspots-scheduled-shanghai` 的任务。
+2. **若已存在**：向用户简短确认「定时任务已存在」，跳过添加。
+3. **若不存在**：执行下面的 `openclaw cron add`（仅注册一次）。
 
 ```bash
 openclaw cron add \
-  --name "hotspots-every-5m-shanghai" \
-  --cron "*/5 * * * *" \
+  --name "hotspots-scheduled-shanghai" \
+  --cron "*/30 * * * *" \
   --tz "Asia/Shanghai" \
   --session isolated \
   --agent default \
   --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest，按本 skill 的 Output Rules 展示完整内容（含 AI 摘要与各平台区块）。'
 ```
 
-After a successful run, confirm the hotspots job (every 5 minutes, Asia/Shanghai) was registered. If `openclaw` is missing or the command fails, report the error.
+- 默认周期 `*/30 * * * *` 与热点内容约 30 分钟更新节奏一致；若用户要求更高频，可改为 `*/5 * * * *` 并保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
+- 注册成功后向用户确认：**已自动设置定时任务**（周期、时区、任务名）。
+
+若 `openclaw` 未安装或命令失败：**不要静默跳过**——说明原因，并给出用户可手动执行的同一条 `cron add` 命令。
 
 ### Prerequisites for scheduled runs
 
-- The OpenClaw agent that receives the cron **must have access to this skill** (e.g. same Cursor rules / skill bundle / project where `SKILL.md` is loaded). If jobs run in an environment without the hotspots skill, add the skill there or inline the endpoint and rules in the `--message`.
-- Adjust `--cron` / `--tz` for a different schedule; keep `--message` explicit so the run is unambiguously a **hotspots consumer** fetch, not a generic report.
+- 接收 cron 的 OpenClaw agent **须能加载本 skill**（同一项目中的 `SKILL.md` / 规则包）。若定时环境无本 skill，须在 `--message` 中内联完整 URL 与 Output Rules 要点。
+- 修改 `--cron` / `--tz` 时保持 `--message` 明确为 **hotspots consumer** 拉取，避免与其它定时报告混淆。
 
-## Scheduled runs (when cron fires)
+## Scheduled runs（定时触发时）
 
-When the user message is the scheduled prompt above (or any message that asks to run the **hotspots** skill / latest hotspot):
+当消息为上述 `--message` 内容，或明确要求执行 **hotspots** / 最新热点：
 
-1. Treat it as **latest hotspot**: call `GET /hotspots/latest` once (unless the user asked for status-only or a single platform—cron default is full latest).
-2. Follow **Output Rules** and **Reliability Rules** in this file.
-3. Do not skip the skill because the request came from automation; output should match a manual “拉取最新热点” request.
+1. 视为 **latest hotspot**：对 `GET https://hotspot.api4claw.com/hotspots/latest` 请求一次（除非用户只要 status 或单平台；定时默认输出完整最新内容）。
+2. 遵循本文件 **Output Rules** 与 **Reliability Rules**。
+3. 不因来自自动化而省略步骤；输出应与用户手动「拉取最新热点」一致。
 
 ## Scope
 
