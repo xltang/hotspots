@@ -25,7 +25,7 @@ Base URL:
 
 Only endpoint:
 
-- `GET /hotsports/latest`: fetch latest markdown content.
+- `GET /hotspots/latest`: fetch latest markdown content.
 
 ## Consumer Workflow
 
