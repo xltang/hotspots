@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes hotspot markdown from a single endpoint and presents latest content to end users. Use when users ask to fetch latest hotspots from https://hotspot.api4claw.com/hotsports/latest or view platform-filtered hotspot output.
+description: Consumes hotspot markdown from a single endpoint and presents latest content to end users. Use when users ask to fetch latest hotspots from https://hotspot.api4claw.com/hotspots/latest or view platform-filtered hotspot output.
 ---
 
 # OpenClaw Hotspot Consumer Skill
@@ -31,8 +31,8 @@ Only endpoint:
 
 For each user intent:
 
-- `latest hotspot`: call `GET /hotsports/latest`, then display.
-- `status`: call `GET /hotsports/latest`, then report reachable/unreachable.
+- `latest hotspot`: call `GET /hotspots/latest`, then display.
+- `status`: call `GET /hotspots/latest`, then report reachable/unreachable.
 - `platform filter`: fetch markdown first, then locally slice by section keyword.
 
 Platform filter targets:
@@ -72,11 +72,11 @@ When showing status:
 
 - reachable or unreachable
 - latest update time (if any)
-- endpoint used: `/hotsports/latest`
+- endpoint used: `/hotspots/latest`
 
 ## Reliability Rules
 
-- If `/hotsports/latest` fails, return explicit failure reason.
+- If `/hotspots/latest` fails, return explicit failure reason.
 - Do not fabricate content when server is unreachable.
 - Return explicit degraded reason and a next action.
 - Keep responses concise and user-facing.
@@ -84,4 +84,4 @@ When showing status:
 ## Security Rules
 
 - Do not expose tokens or secret headers in output.
-- Do not call any hotspot endpoint except `/hotsports/latest`.
+- Do not call any hotspot endpoint except `/hotspots/latest`.
