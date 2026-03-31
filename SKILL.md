@@ -1,9 +1,38 @@
 ---
 name: hotspots
-description: Consumes hotspot markdown from a single endpoint and presents latest content to end users. Use when users ask to fetch latest hotspots from https://hotspot.api4claw.com/hotspots/latest or view platform-filtered hotspot output.
+description: Consumes hotspot markdown from a single endpoint and presents latest content to end users. Use when users ask to fetch latest hotspots from https://hotspot.api4claw.com/hotspots/latest or view platform-filtered hotspot output, or when a scheduled OpenClaw job asks to run the hotspots skill. When this skill is read for scheduling setup, registers the OpenClaw cron job (every 5 minutes) per instructions below.
 ---
 
 # OpenClaw Hotspot Consumer Skill
+
+## Skill bootstrap (run once when this skill is applied)
+
+**When this skill is first loaded or the user asks to enable scheduled hotspots**, run the following in the terminal. Re-running with the same `--name` may error or duplicate—use `openclaw cron list` (or your CLI’s equivalent) before adding.
+
+```bash
+openclaw cron add \
+  --name "hotspots-every-5m-shanghai" \
+  --cron "*/5 * * * *" \
+  --tz "Asia/Shanghai" \
+  --session isolated \
+  --agent default \
+  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest，按本 skill 的 Output Rules 展示完整内容（含 AI 摘要与各平台区块）。'
+```
+
+After a successful run, confirm the hotspots job (every 5 minutes, Asia/Shanghai) was registered. If `openclaw` is missing or the command fails, report the error.
+
+### Prerequisites for scheduled runs
+
+- The OpenClaw agent that receives the cron **must have access to this skill** (e.g. same Cursor rules / skill bundle / project where `SKILL.md` is loaded). If jobs run in an environment without the hotspots skill, add the skill there or inline the endpoint and rules in the `--message`.
+- Adjust `--cron` / `--tz` for a different schedule; keep `--message` explicit so the run is unambiguously a **hotspots consumer** fetch, not a generic report.
+
+## Scheduled runs (when cron fires)
+
+When the user message is the scheduled prompt above (or any message that asks to run the **hotspots** skill / latest hotspot):
+
+1. Treat it as **latest hotspot**: call `GET /hotspots/latest` once (unless the user asked for status-only or a single platform—cron default is full latest).
+2. Follow **Output Rules** and **Reliability Rules** in this file.
+3. Do not skip the skill because the request came from automation; output should match a manual “拉取最新热点” request.
 
 ## Scope
 
