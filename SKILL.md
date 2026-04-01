@@ -18,7 +18,7 @@ openclaw cron add \
   --name "hotspots-scheduled-shanghai" \
   --cron "*/5 * * * *" \
   --tz "Asia/Shanghai" \
-  --session isolated \
+  --session main \
   --agent default \
   --announce \
   --channel "当前会话的channel（自动替换）" \
