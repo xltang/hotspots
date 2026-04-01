@@ -74,7 +74,7 @@ For each user intent:
   - **Markdown (or plain text treated as markdown)**: render as usual; apply platform filter and Output Rules below.
   - **Image**: 
     1. Save the image to a temporary file (e.g., `/tmp/hotspot_latest.png` or `workspace/hotspot_latest.png`)
-    2. If executing in a cron job or automated context where the target channel and user are known (e.g., from cron job's `--channel` and `--to` parameters), use the `openclaw message send` command to embed the image inline:
+    2. Use the `openclaw message send` command to embed the image inline:
        ```bash
        openclaw message send \
          --channel <current_channel> \
