@@ -21,7 +21,7 @@ openclaw cron add \
   --session isolated \
   --agent default \
   --announce \
-  --channel last \
+  --channel "当前会话的channel（自动替换）" \
   --to "当前会话的用户ID（自动替换）" \
   --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；响应可能是 markdown 或图片，按本 skill Output Rules 完整展示。'
 ```
