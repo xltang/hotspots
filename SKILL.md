@@ -72,9 +72,35 @@ For each user intent:
 
 - `latest hotspot`: call `GET /hotspots/latest`, inspect `Content-Type` and body, then display:
   - **Markdown (or plain text treated as markdown)**: render as usual; apply platform filter and Output Rules below.
-  - **Image**: show the image inline to the user; do not pretend missing text sections exist. If the API returns a redirect or signed URL to an image, follow it and display the final image.
+  - **Image**: 
+    1. Save the image to a temporary file (e.g., `/tmp/hotspot_latest.png` or `workspace/hotspot_latest.png`)
+    2. If executing in a cron job or automated context where the target channel and user are known (e.g., from cron job's `--channel` and `--to` parameters), use the `openclaw message send` command to embed the image inline:
+       ```bash
+       openclaw message send \
+         --channel <current_channel> \
+         --to <current_user_id> \
+         --media <image_file_path> \
+         --message "热点截图 | 更新时间: {update_time} | 尺寸: {width}×{height}"
+       ```
+    3. If in an interactive session where channel/user context is not predefined, describe the image and offer to send it via the current channel.
+    4. Do not pretend missing text sections exist.
 - `status`: call `GET /hotspots/latest`, then report reachable/unreachable (same as today; status does not depend on markdown vs image).
 - `platform filter`: only when the fetched body is **markdown** (or text with recognizable section headers): fetch first, then locally slice by section keyword. If the response is **image-only**, state that platform filtering does not apply and show the image (or describe accessibility constraints if images cannot be shown).
+
+### Implementation Notes for Image Display
+
+When the skill is triggered by a cron job, the following context is typically available:
+- The cron job's `--channel` parameter (e.g., `feishu`, `telegram`, etc.)
+- The cron job's `--to` parameter (target user/group ID)
+- The agent has access to the workspace filesystem for saving temporary image files
+
+For proper inline image display, the skill should:
+1. Determine the current channel and target from context (cron parameters or session metadata)
+2. Save the received image data to a local file
+3. Use the appropriate channel-specific method to send the image:
+   - **Feishu**: Use `openclaw message send --channel feishu --media <file>`
+   - **Telegram**: Use `openclaw message send --channel telegram --media <file>`
+   - Other channels as supported by OpenClaw
 
 Platform filter targets (markdown sections only):
 
@@ -113,10 +139,21 @@ When showing hotspot content, branch on format:
 
 **If the response is an image:**
 
-1. display the image (or provide the image URL if the client cannot embed bytes)
-2. show update time if available (`Last-Modified`, `Date`, or filename/metadata if any)
-3. do not invent markdown sections or an AI summary block that are not in the response
-4. if multiple images are returned by the API (e.g. multipart or JSON with URLs), show each in a consistent order
+1. **Save the image**: Write the image data to a local file (e.g., `workspace/hotspot_latest.png`, `workspace/hotspot_latest.jpg`)
+2. **Send inline image**: Use OpenClaw's message sending capability to embed the image in the response:
+   - For cron/scheduled runs: Use `openclaw message send` with the channel and target from the cron job configuration
+   - For interactive sessions: Use the current session's channel and user context
+3. **Provide metadata**: Include image information:
+   - Update time (from `Last-Modified`, `Date`, or response headers)
+   - Image dimensions (if available or can be determined)
+   - File size and format
+4. **Do not invent content**: Do not invent markdown sections or an AI summary block that are not in the response
+5. **Multiple images**: If multiple images are returned by the API (e.g. multipart or JSON with URLs), show each in a consistent order
+
+**Important for cron jobs**: When this skill is triggered by a scheduled cron job, the agent should:
+- Save the image to the workspace (ensuring it persists for the session)
+- Use the same channel and target as configured in the cron job
+- Include a descriptive message with the image (e.g., "热点截图 | 更新时间: {timestamp}")
 
 When showing status:
 
