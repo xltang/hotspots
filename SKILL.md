@@ -78,7 +78,7 @@ For each user intent:
        ```bash
        openclaw message send \
          --channel <current_channel> \
-         --to <current_user_id> \
+         --target <current_user_id> \
          --media <image_file_path> \
          --message "热点截图 | 更新时间: {update_time} | 尺寸: {width}×{height}"
        ```
