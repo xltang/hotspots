@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest (response may be markdown text or image/binary) and presents it to end users. On skill install or first apply, registers an OpenClaw cron job every hour (Asia/Shanghai). Use when users ask for latest hotspots, status, platform-filtered output, or when a cron message triggers this skill.
+description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest (response may be markdown text or image/binary) and presents it to end users. On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, platform-filtered output, or when a cron message triggers this skill.
 ---
 
 # OpenClaw Hotspot Consumer Skill
@@ -16,7 +16,7 @@ description: Consumes latest hotspot content from https://hotspot.api4claw.com/h
 ```bash
 openclaw cron add \
   --name "hotspots-scheduled-shanghai" \
-  --cron "0 * * * *" \
+  --cron "*/5 * * * *" \
   --tz "Asia/Shanghai" \
   --session isolated \
   --agent default \
@@ -26,7 +26,7 @@ openclaw cron add \
   --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；响应可能是 markdown 或图片，按本 skill Output Rules 完整展示。'
 ```
 
-- 默认周期 `0 * * * *`（每小时整点一次，时区见 `--tz`）；若用户要求更低频，可改为 `0 */6 * * *`（每 6 小时）或 `0 9 * * *`（每天 9:00）；更高频可改为 `*/30 * * * *` 等。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
+- 默认周期 `*/5 * * * *`（每 5 分钟一次，时区见 `--tz`）；若用户要求更低频，可改为 `*/15 * * * *`、`*/30 * * * *` 或 `0 * * * *`（每小时整点）。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
 - 注册成功后向用户确认：**已自动设置定时任务**（周期、时区、任务名）。
 
 若 `openclaw` 未安装或命令失败：**不要静默跳过**——说明原因，并给出用户可手动执行的同一条 `cron add` 命令。
