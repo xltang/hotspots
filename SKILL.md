@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest (response may be markdown text or image/binary) and presents it to end users. On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, platform-filtered output, or when a cron message triggers this skill.
+description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest and presents it to end users. Response format is JSON array (sources with items). On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, source-grouped titles, top hot items, or when a cron message triggers this skill.
 ---
 
 # OpenClaw Hotspot Consumer Skill
@@ -18,12 +18,12 @@ openclaw cron add \
   --name "hotspots-scheduled-shanghai" \
   --cron "*/5 * * * *" \
   --tz "Asia/Shanghai" \
-  --session main \
+  --session isolated \
   --agent default \
   --announce \
   --channel "当前会话的channel（自动替换）" \
   --to "当前会话的用户ID（自动替换）" \
-  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；响应可能是 markdown 或图片，按本 skill Output Rules 完整展示。'
+  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；优先按 JSON 结构解析并输出 Top Hot 摘要与 source_name 分组标题。'
 ```
 
 - 默认周期 `*/5 * * * *`（每 5 分钟一次，时区见 `--tz`）；若用户要求更低频，可改为 `*/15 * * * *`、`*/30 * * * *` 或 `0 * * * *`（每小时整点）。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
@@ -40,7 +40,7 @@ openclaw cron add \
 
 当消息为上述 `--message` 内容，或明确要求执行 **hotspots** / 最新热点：
 
-1. 视为 **latest hotspot**：对 `GET https://hotspot.api4claw.com/hotspots/latest` 请求一次（除非用户只要 status 或单平台；定时默认输出完整最新内容）。按 `Content-Type` 处理 markdown 或图片。
+1. 视为 **latest hotspot**：对 `GET https://hotspot.api4claw.com/hotspots/latest` 请求一次（除非用户只要 status 或单平台；定时默认输出完整最新内容），并按 JSON 结构处理。
 2. 遵循本文件 **Output Rules** 与 **Reliability Rules**。
 3. 不因来自自动化而省略步骤；输出应与用户手动「拉取最新热点」一致。
 
@@ -50,9 +50,10 @@ This skill is only for Consumer behavior.
 
 Use this skill when users ask to:
 
-- read or view latest hotspot content (markdown and/or image from `/hotspots/latest`)
+- read latest hotspot data from `/hotspots/latest` (primary: JSON)
+- get top hot items with AI summaries
+- view titles grouped by `source_name`
 - check hotspot service status
-- view one platform section when the payload is markdown (section slicing does not apply to image-only responses)
 
 Do not include Publisher generation logic or Server upload/storage internals in responses.
 
@@ -64,52 +65,27 @@ Base URL:
 
 Only endpoint:
 
-- `GET /hotspots/latest`: fetch the latest hotspot **payload**. The body may be **markdown text** (e.g. `Content-Type: text/markdown` or `text/plain`) or **image content** (e.g. `image/png`, `image/jpeg`, `image/webp`, `image/gif`). Treat according to the response `Content-Type` and body.
+- `GET /hotspots/latest`: fetch the latest hotspot payload as JSON array. Each element is a source block (e.g. `source`, `source_name`, `fetched_at`, `items[]`), and each item usually includes `title`, `content`, `link`, `hotness`.
 
 ## Consumer Workflow
 
 For each user intent:
 
-- `latest hotspot`: call `GET /hotspots/latest`, inspect `Content-Type` and body, then display:
-  - **Markdown (or plain text treated as markdown)**: render as usual; apply platform filter and Output Rules below.
-  - **Image**: 
-    1. Save the image to a temporary file (e.g., `/tmp/hotspot_latest.png` or `workspace/hotspot_latest.png`)
-    2. Use the `openclaw message send` command to embed the image inline:
-       ```bash
-       openclaw message send \
-         --channel <current_channel> \
-         --target <current_user_id> \
-         --media <image_file_path> \
-         --message "热点截图 | 更新时间: {update_time} | 尺寸: {width}×{height}"
-       ```
-    3. If in an interactive session where channel/user context is not predefined, describe the image and offer to send it via the current channel.
-    4. Do not pretend missing text sections exist.
-- `status`: call `GET /hotspots/latest`, then report reachable/unreachable (same as today; status does not depend on markdown vs image).
-- `platform filter`: only when the fetched body is **markdown** (or text with recognizable section headers): fetch first, then locally slice by section keyword. If the response is **image-only**, state that platform filtering does not apply and show the image (or describe accessibility constraints if images cannot be shown).
+- `latest hotspot`:
+  1. Call `GET /hotspots/latest`.
+  2. If body is JSON array, parse and flatten `items[]` across all sources.
+  3. Build **Top Hot** list: sort by `hotness` descending (missing hotness treated as `0`), keep up to 10 items.
+  4. For each Top Hot item, use item `title` + `content` to generate concise AI summary (1-2 lines each, no fabrication).
+  5. After Top Hot section, group display by `source_name`, showing item titles under each source.
+- `status`: call `GET /hotspots/latest`, then report reachable/unreachable and basic stats from JSON (source count, total item count, latest fetched_at/data_date).
+- `source filter`: filter by `source`/`source_name`.
 
-### Implementation Notes for Image Display
+JSON grouping targets (if present):
 
-When the skill is triggered by a cron job, the following context is typically available:
-- The cron job's `--channel` parameter (e.g., `feishu`, `telegram`, etc.)
-- The cron job's `--to` parameter (target user/group ID)
-- The agent has access to the workspace filesystem for saving temporary image files
-
-For proper inline image display, the skill should:
-1. Determine the current channel and target from context (cron parameters or session metadata)
-2. Save the received image data to a local file
-3. Use the appropriate channel-specific method to send the image:
-   - **Feishu**: Use `openclaw message send --channel feishu --media <file>`
-   - **Telegram**: Use `openclaw message send --channel telegram --media <file>`
-   - Other channels as supported by OpenClaw
-
-Platform filter targets (markdown sections only):
-
-- `weibo`
-- `zhihu`
-- `xiaohongshu`
-- `cctv`
-
-When returning **filtered markdown** output, always keep the AI summary block. Image responses have no section slice; preserve the full image.
+- `xwlb` / `新闻联播`
+- `weibo` / `微博`
+- `zhihu` / `知乎`
+- `qqMorningPost` / `腾讯早报`
 
 ## Configuration
 
@@ -124,36 +100,19 @@ Recommended defaults:
 
 ## Output Rules
 
-When showing hotspot content, branch on format:
+When showing hotspot content, use this order:
 
-**If the response is markdown (or text with the same structure):**
-
-1. show update time if available (from body headers or markdown metadata if present)
-2. show AI summary block first when present in the body
-3. show platform sections in stable order:
-   - Weibo
-   - Zhihu
-   - Xiaohongshu
-   - CCTV
-4. if partial/missing, explicitly list unavailable sections
-
-**If the response is an image:**
-
-1. **Save the image**: Write the image data to a local file (e.g., `workspace/hotspot_latest.png`, `workspace/hotspot_latest.jpg`)
-2. **Send inline image**: Use OpenClaw's message sending capability to embed the image in the response:
-   - For cron/scheduled runs: Use `openclaw message send` with the channel and target from the cron job configuration
-   - For interactive sessions: Use the current session's channel and user context
-3. **Provide metadata**: Include image information:
-   - Update time (from `Last-Modified`, `Date`, or response headers)
-   - Image dimensions (if available or can be determined)
-   - File size and format
-4. **Do not invent content**: Do not invent markdown sections or an AI summary block that are not in the response
-5. **Multiple images**: If multiple images are returned by the API (e.g. multipart or JSON with URLs), show each in a consistent order
-
-**Important for cron jobs**: When this skill is triggered by a scheduled cron job, the agent should:
-- Save the image to the workspace (ensuring it persists for the session)
-- Use the same channel and target as configured in the cron job
-- Include a descriptive message with the image (e.g., "热点截图 | 更新时间: {timestamp}")
+1. **Top Hot (max 10)**:
+   - From JSON `items[]`, sort by `hotness` desc and take up to 10.
+   - For each entry, show title + hotness + AI summary from `title/content`.
+2. **By source_name**:
+   - Group all items by `source_name`.
+   - Under each group, list item titles in original order (or by hotness desc if user asks for ranking).
+3. **Metadata**:
+   - Show update/fetch time when available (`fetched_at`, `data_date`, response headers).
+4. **Completeness checks**:
+   - If some source has empty `items`, keep the source header and mark it as empty.
+   - If `hotness` is missing, treat as `0`.
 
 When showing status:
 
@@ -165,7 +124,8 @@ When showing status:
 
 - If `/hotspots/latest` fails, return explicit failure reason.
 - Do not fabricate content when server is unreachable.
-- For **image** responses: if decode or display fails, say so and offer the raw URL or content-type if available; do not substitute with unrelated markdown.
+- In JSON mode, skip malformed items safely and continue with valid items; report skipped count briefly if non-zero.
+- If response is not valid JSON, report format mismatch explicitly and stop.
 - Return explicit degraded reason and a next action.
 - Keep responses concise and user-facing.
 
