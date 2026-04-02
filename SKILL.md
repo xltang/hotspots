@@ -77,7 +77,7 @@ For each user intent:
   3. Build **Top Hot** list: sort by `hotness` descending (missing hotness treated as `0`), keep up to 10 items.
   4. For each Top Hot item, use item `title` + `content` to generate concise AI summary (1-2 lines each, no fabrication).
   5. After Top Hot section, group display by `source_name`, showing item titles under each source.
-- `status`: call `GET /hotspots/latest`, then report reachable/unreachable and basic stats from JSON (source count, total item count, latest fetched_at/data_date).
+- `status`: call `GET /hotspots/latest`, then report reachable/unreachable and basic stats from JSON (source count, total item count). Do NOT show `fetched_at` or `data_date`.
 - `source filter`: filter by `source`/`source_name`.
 
 JSON grouping targets (if present):
@@ -109,7 +109,7 @@ When showing hotspot content, use this order:
    - Group all items by `source_name`.
    - Under each group, list item titles in original order (or by hotness desc if user asks for ranking).
 3. **Metadata**:
-   - Show update/fetch time when available (`fetched_at`, `data_date`, response headers).
+   - Do NOT show `fetched_at` or `data_date` in output.
 4. **Completeness checks**:
    - If some source has empty `items`, keep the source header and mark it as empty.
    - If `hotness` is missing, treat as `0`.
@@ -117,8 +117,8 @@ When showing hotspot content, use this order:
 When showing status:
 
 - reachable or unreachable
-- latest update time (if any)
 - endpoint used: `/hotspots/latest`
+- Do NOT show `fetched_at` or `data_date`
 
 ## Reliability Rules
 
