@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest and presents it to end users. Response format is JSON array (sources with items). On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, source-grouped titles, top hot items, or when a cron message triggers this skill.
+description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest and presents it to end users. Response format is JSON array (sources with items). Ranks Top items by model-estimated click-through rate (not raw hotness). On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, source-grouped titles, top items by estimated CTR, or when a cron message triggers this skill.
 ---
 
 # OpenClaw Hotspot Consumer Skill
@@ -23,7 +23,7 @@ openclaw cron add \
   --announce \
   --channel "当前会话的channel（自动替换）" \
   --to "当前会话的用户ID（自动替换）" \
-  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；优先按 JSON 结构解析并输出 Top Hot 摘要与 source_name 分组标题。'
+  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；按 JSON 解析：Top 区块按预估点击率排序（不展示热度），再按 source_name 分组展示标题。'
 ```
 
 - 默认周期 `*/5 * * * *`（每 5 分钟一次，时区见 `--tz`）；若用户要求更低频，可改为 `*/15 * * * *`、`*/30 * * * *` 或 `0 * * * *`（每小时整点）。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
@@ -51,7 +51,7 @@ This skill is only for Consumer behavior.
 Use this skill when users ask to:
 
 - read latest hotspot data from `/hotspots/latest` (primary: JSON)
-- get top hot items with AI summaries
+- get top items ranked by estimated click-through rate (with AI summaries)
 - view titles grouped by `source_name`
 - check hotspot service status
 
@@ -65,7 +65,7 @@ Base URL:
 
 Only endpoint:
 
-- `GET /hotspots/latest`: fetch the latest hotspot payload as JSON array. Each element is a source block (e.g. `source`, `source_name`, `fetched_at`, `items[]`), and each item usually includes `title`, `content`, `link`, `hotness`.
+- `GET /hotspots/latest`: fetch the latest hotspot payload as JSON array. Each element is a source block (e.g. `source`, `source_name`, `fetched_at`, `items[]`), and each item usually includes `title`, `content`, `link`, `hotness`. Do **not** use `hotness` for display or ranking; use model-estimated CTR for Top ordering only.
 
 ## Consumer Workflow
 
@@ -74,9 +74,9 @@ For each user intent:
 - `latest hotspot`:
   1. Call `GET /hotspots/latest`.
   2. If body is JSON array, parse and flatten `items[]` across all sources.
-  3. Build **Top Hot** list: sort by `hotness` descending (missing hotness treated as `0`), keep up to 10 items.
-  4. For each Top Hot item, use item `title` + `content` to generate concise AI summary (1-2 lines each, no fabrication).
-  5. After Top Hot section, group display by `source_name`, showing item titles under each source.
+  3. Build **Top (max 10)** list: for every item, assign an **estimated click-through rate (预估点击率)** internally from `title` + `content` only (ranking signal only). Sort all items by this estimate descending, take up to 10. Do **not** sort by JSON `hotness` and do **not** expose `hotness` or 热度 in output.
+  4. For each Top item, write concise AI summary from `title` + `content` (1-2 lines each, no fabrication).
+  5. After Top section, group display by `source_name`, showing item titles under each source (still no `hotness`/热度).
 - `status`: call `GET /hotspots/latest`, then report reachable/unreachable and basic stats from JSON (source count, total item count). Do NOT show `fetched_at` or `data_date`.
 - `source filter`: filter by `source`/`source_name`.
 
@@ -102,17 +102,17 @@ Recommended defaults:
 
 When showing hotspot content, use this order:
 
-1. **Top Hot (max 10)**:
-   - From JSON `items[]`, sort by `hotness` desc and take up to 10.
-   - For each entry, show title + hotness + AI summary from `title/content`.
+1. **Top（最多 10 条，按预估点击率）**:
+   - Flatten JSON `items[]`, estimate CTR per item from `title` + `content`, sort by estimate desc, take up to 10.
+   - For each entry, show **title + AI summary** (from `title/content`). Do **not** show `hotness`, numeric hotness, or the word 热度.
+   - Optional: prefix with rank `1.` … `10.` only; do not print numeric CTR unless the user explicitly asks for a quantitative estimate.
 2. **By source_name**:
    - Group all items by `source_name`.
-   - Under each group, list item titles in original order (or by hotness desc if user asks for ranking).
+   - Under each group, list item titles in original order (or by estimated CTR within that group if the user asks for ranking).
 3. **Metadata**:
    - Do NOT show `fetched_at` or `data_date` in output.
 4. **Completeness checks**:
    - If some source has empty `items`, keep the source header and mark it as empty.
-   - If `hotness` is missing, treat as `0`.
 
 When showing status:
 
