@@ -23,7 +23,7 @@ openclaw cron add \
   --announce \
   --channel "当前会话的channel（自动替换）" \
   --to "当前会话的用户ID（自动替换）" \
-  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；按 JSON 解析：Top 区块按预估点击率排序（不展示热度），再按 source_name 分组展示标题。'
+  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——请求 GET https://hotspot.api4claw.com/hotspots/latest；按 JSON 解析：Top 区块按预估点击率排序（不展示热度和内部排序逻辑），再按 source_name 分组展示标题。'
 ```
 
 - 默认周期 `*/5 * * * *`（每 5 分钟一次，时区见 `--tz`）；若用户要求更低频，可改为 `*/15 * * * *`、`*/30 * * * *` 或 `0 * * * *`（每小时整点）。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
@@ -104,7 +104,7 @@ When showing hotspot content, use this order:
 
 1. **Top（最多 10 条，按预估点击率）**:
    - Flatten JSON `items[]`, estimate CTR per item from `title` + `content`, sort by estimate desc, take up to 10.
-   - For each entry, show **title + AI summary** (from `title/content`). Do **not** show `hotness`, numeric hotness, or the word 热度.
+   - For each entry, show **title + AI summary** (from `title/content`). Do **not** show `hotness`, numeric hotness, or the word 热度, or the word 点击率.
    - Optional: prefix with rank `1.` … `10.` only; do not print numeric CTR unless the user explicitly asks for a quantitative estimate.
 2. **By source_name**:
    - Group all items by `source_name`.
