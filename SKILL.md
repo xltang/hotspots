@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP and presents it to end users. Response format is JSON array (sources with items). Ranks Top items by model-estimated click-through rate (not raw hotness). On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, source-grouped titles, top items by estimated CTR, or when a cron message triggers this skill.
+description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP and presents it to end users. Response format is JSON array (sources with items). Ranks Top items by model-estimated click-through rate (not raw hotness). On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, source-grouped titles, top items by estimated CTR, or when a cron message triggers this skill.Triggers:"今日热点", "今日头条", "热点新闻", "热点"
 ---
 
 # OpenClaw Hotspot Consumer Skill
@@ -33,7 +33,7 @@ USER_ID="$(cat ~/.openclaw/hotspots/user_id)"
 ```bash
 openclaw cron add \
   --name "hotspots-scheduled-shanghai" \
-  --cron "*/5 * * * *" \
+  --cron "30 9 * * *" \
   --tz "Asia/Shanghai" \
   --session isolated \
   --agent default \
@@ -43,7 +43,7 @@ openclaw cron add \
   --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——先生成分钟级 TIME_STEMP，再请求 GET https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP；按 JSON 解析：Top 区块按预估点击率排序（不展示热度和内部排序逻辑），再按 source_name 分组展示标题。'
 ```
 
-- 默认周期 `*/5 * * * *`（每 5 分钟一次，时区见 `--tz`）；若用户要求更低频，可改为 `*/15 * * * *`、`*/30 * * * *` 或 `0 * * * *`（每小时整点）。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
+- 默认周期 `30 9 * * *`（每天上午 9:30，时区见 `--tz`）；若用户要求更高频，可改为 `*/30 * * * *` 或 `0 * * * *`。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
 - 注册成功后向用户确认：**已自动设置定时任务**（周期、时区、任务名、`userID=$USER_ID`）。
 
 若 `openclaw` 未安装或命令失败：**不要静默跳过**——说明原因，并给出用户可手动执行的同一条 `cron add` 命令。
