@@ -1,15 +1,26 @@
 ---
 name: hotspots
-description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP and presents it to end users. Response format is JSON array (sources with items). Ranks Top items by model-estimated click-through rate (not raw hotness). On skill install or first apply, registers an OpenClaw cron job every 5 minutes (Asia/Shanghai). Use when users ask for latest hotspots, status, source-grouped titles, top items by estimated CTR, or when a cron message triggers this skill.Triggers:"今日热点", "今日头条", "热点新闻", "热点"
+description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP and presents it to end users. Response format is JSON array (sources with items). Ranks top items by model-estimated click-through rate (not raw hotness). On skill install or first apply, initializes local USER_ID storage and auto-registers an OpenClaw recurring cron job. Use when users ask for latest hotspots, status, source-grouped titles, top items by estimated CTR, or when a cron message triggers this skill. Triggers: "今日热点", "今日头条", "热点新闻", "热点"
+required_tools:
+  - web_fetch
+optional_tools:
+  - openclaw
+generated_env:
+  - USER_ID
+network_access:
+  - https://hotspot.api4claw.com
+side_effects:
+  - writes_local_file: ~/.openclaw/hotspots/user_id
+  - creates_or_updates_cron: hotspots-scheduled-shanghai
 ---
 
 # OpenClaw Hotspot Consumer Skill
 
-## Installation：安装本 skill 时自动注册定时任务
+## Installation and Setup
 
-**Mandatory：** 用户将本 skill 安装到项目或首次在本对话/会话中启用本 skill 时，**必须立即**完成定时任务注册（不要等用户再说「帮我设定时」）。
+On skill install or first apply in a session, run setup automatically (idempotent).
 
-1. 先在 OpenClaw 本地生成并持久化 `userID`（若已存在则复用，不重复生成）：
+1. Initialize and persist local `USER_ID`:
 
 ```bash
 mkdir -p ~/.openclaw/hotspots
@@ -19,16 +30,15 @@ if [ ! -s ~/.openclaw/hotspots/user_id ]; then
   elif command -v python3 >/dev/null 2>&1; then
     python3 -c "import uuid; print(uuid.uuid4())" > ~/.openclaw/hotspots/user_id
   else
-    # Last resort fallback: timestamp + random suffix
     printf "uid-%s-%s\n" "$(date +%s)" "$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 8)" > ~/.openclaw/hotspots/user_id
   fi
 fi
 USER_ID="$(cat ~/.openclaw/hotspots/user_id)"
 ```
 
-2. 在终端执行 `openclaw cron list`（或当前 OpenClaw CLI 等价命令），查找是否已有名为 `hotspots-scheduled-shanghai` 的任务。
-3. **若已存在**：向用户简短确认「定时任务已存在」，并回显本地 `userID`（`$USER_ID`）。
-4. **若不存在**：执行下面的 `openclaw cron add`（仅注册一次）。
+2. Check existing cron and ensure exactly one recurring job named `hotspots-scheduled-shanghai`.
+
+3. If missing, register cron automatically:
 
 ```bash
 openclaw cron add \
@@ -43,10 +53,9 @@ openclaw cron add \
   --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——先生成分钟级 TIME_STEMP，再请求 GET https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP；按 JSON 解析：Top 区块按预估点击率排序（不展示热度和内部排序逻辑），再按 source_name 分组展示标题。'
 ```
 
-- 默认周期 `30 9 * * *`（每天上午 9:30，时区见 `--tz`）；若用户要求更高频，可改为 `*/30 * * * *` 或 `0 * * * *`。修改时保留同一 `--name` 前先 `cron remove` 再 `add`（以 CLI 实际语法为准）。
-- 注册成功后向用户确认：**已自动设置定时任务**（周期、时区、任务名、`userID=$USER_ID`）。
+If the cron already exists, keep it unchanged unless user asks to update schedule.
 
-若 `openclaw` 未安装或命令失败：**不要静默跳过**——说明原因，并给出用户可手动执行的同一条 `cron add` 命令。
+If `openclaw` is unavailable, report setup failure clearly and provide the exact manual `cron add` command above.
 
 ### Prerequisites for scheduled runs
 
@@ -55,7 +64,7 @@ openclaw cron add \
 
 ## Scheduled runs（定时触发时）
 
-当消息为上述 `--message` 内容，或明确要求执行 **hotspots** / 最新热点：
+When user-approved scheduling is already configured and a scheduled message triggers this skill, or the user explicitly requests **hotspots** / 最新热点:
 
 **⚠️ 每次执行都必须实际调用 API！禁止使用缓存或上次的结果！**
 
@@ -125,7 +134,11 @@ JSON grouping targets (if present):
 
 Required:
 
-- `HOTSPOT_BASE_URL`: set to `https://hotspot.api4claw.com`.
+- `USER_ID`: auto-generated once and persisted at `~/.openclaw/hotspots/user_id` if absent.
+
+Fixed:
+
+- `HOTSPOT_BASE_URL`: `https://hotspot.api4claw.com` (constant, not configurable).
 
 Recommended defaults:
 
@@ -167,3 +180,4 @@ When showing status:
 
 - Do not expose tokens or secret headers in output.
 - Do not call any hotspot endpoint except `/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`.
+- Setup phase is allowed to write only `~/.openclaw/hotspots/user_id` and manage only the `hotspots-scheduled-shanghai` cron job.
