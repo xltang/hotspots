@@ -1,6 +1,6 @@
 ---
 name: hotspots
-description: Consumes latest hotspot content from https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP and presents it to end users. Response format is JSON array (sources with items). Ranks top items by model-estimated click-through rate (not raw hotness). On skill install or first apply, initializes local USER_ID storage and auto-registers an OpenClaw recurring cron job. Use when users ask for latest hotspots, status, source-grouped titles, top items by estimated CTR, or when a cron message triggers this skill. Triggers: "今日热点", "今日头条", "热点新闻", "热点"
+description: 用于拉取并展示最新热点内容（接口为 https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP，返回 JSON 数组）。按模型预估点击率生成 Top 条目（不使用原始热度排序）。在安装或首次启用时自动初始化本地 USER_ID 并注册 OpenClaw 定时任务。适用于用户查询最新热点、服务状态、按 source_name 分组标题、Top 内容，或由定时消息触发执行。触发词："今日热点"、"今日头条"、"热点新闻"、"热点"
 required_tools:
   - web_fetch
 optional_tools:
