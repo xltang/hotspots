@@ -1,44 +1,36 @@
 ---
 name: hotspots
-description: 用于拉取并展示最新热点内容（接口为 https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP，返回 JSON 数组）。按模型预估点击率生成 Top 条目（不使用原始热度排序）。在安装或首次启用时自动初始化本地 USER_ID 并注册 OpenClaw 定时任务。适用于用户查询最新热点、服务状态、按 source_name 分组标题、Top 内容，或由定时消息触发执行。触发词："今日热点"、"今日头条"、"热点新闻"、"热点"
+description: 用于拉取并展示最新热点内容（接口为 https://hotspot.api4claw.com/hotspots/latest?timestamp=$TIME_STEMP，返回 JSON 数组）。按模型预估点击率生成 Top 条目（不使用原始热度排序）。默认会提示用户创建定时任务（不自动执行），在用户确认后提供 cron 注册命令。适用于用户查询最新热点、服务状态、按 source_name 分组标题、Top 内容，或由已存在的定时消息触发执行。触发词："今日热点"、"今日头条"、"热点新闻"、"热点"
 required_tools:
   - web_fetch
 optional_tools:
   - openclaw
-generated_env:
-  - USER_ID
 network_access:
   - https://hotspot.api4claw.com
 side_effects:
-  - writes_local_file: ~/.openclaw/hotspots/user_id
-  - creates_or_updates_cron: hotspots-scheduled-shanghai
+  - none_by_default
+  - user_approved_optional_cron_setup
 ---
 
 # OpenClaw Hotspot Consumer Skill
 
 ## Installation and Setup
 
-On skill install or first apply in a session, run setup automatically (idempotent).
+Default mode is stateless and read-only.
 
-1. Initialize and persist local `USER_ID`:
+Do not automatically:
 
-```bash
-mkdir -p ~/.openclaw/hotspots
-if [ ! -s ~/.openclaw/hotspots/user_id ]; then
-  if command -v uuidgen >/dev/null 2>&1; then
-    uuidgen | tr 'A-Z' 'a-z' > ~/.openclaw/hotspots/user_id
-  elif command -v python3 >/dev/null 2>&1; then
-    python3 -c "import uuid; print(uuid.uuid4())" > ~/.openclaw/hotspots/user_id
-  else
-    printf "uid-%s-%s\n" "$(date +%s)" "$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 8)" > ~/.openclaw/hotspots/user_id
-  fi
-fi
-USER_ID="$(cat ~/.openclaw/hotspots/user_id)"
-```
+- write local files
+- generate persistent identifiers
+- create/update cron jobs
 
-2. Check existing cron and ensure exactly one recurring job named `hotspots-scheduled-shanghai`.
+By default, proactively suggest creating a cron job for daily updates. Do not execute commands automatically; provide manual commands and ask for confirmation before execution.
 
-3. If missing, register cron automatically:
+Default prompt template:
+
+- `建议开启定时推送：每天 09:30 (Asia/Shanghai) 自动拉取热点。要我为你生成并执行 cron 创建命令吗？`
+
+Optional manual setup example:
 
 ```bash
 openclaw cron add \
@@ -50,12 +42,10 @@ openclaw cron add \
   --announce \
   --channel "当前会话的 channel（自动替换）" \
   --to "当前会话的用户 ID（自动替换）" \
-  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——先生成分钟级 TIME_STEMP，再请求 GET https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP；按 JSON 解析：Top 区块按预估点击率排序（不展示热度和内部排序逻辑），再按 source_name 分组展示标题。'
+  --message '定时执行 hotspots skill：请读取 skill「hotspots」并按 Consumer Workflow 执行「latest hotspot」——先生成分钟级 TIME_STEMP，再请求 GET https://hotspot.api4claw.com/hotspots/latest?timestamp=$TIME_STEMP；按 JSON 解析：Top 区块按预估点击率排序（不展示热度和内部排序逻辑），再按 source_name 分组展示标题。'
 ```
 
-If the cron already exists, keep it unchanged unless user asks to update schedule.
-
-If `openclaw` is unavailable, report setup failure clearly and provide the exact manual `cron add` command above.
+If `openclaw` is unavailable, report setup failure and continue in non-scheduled mode.
 
 ### Prerequisites for scheduled runs
 
@@ -70,7 +60,7 @@ When user-approved scheduling is already configured and a scheduled message trig
 
 1. **第一步：获取当前时间并报告**
    - 获取当前北京时间（精确到分钟），保存到 `TIME_STEMP`（示例：`TIME_STEMP="$(TZ=Asia/Shanghai date +%Y-%m-%dT%H:%M)"`）
-   - 输出：`📡 [HH:mm] 正在调用 API: GET https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`
+   - 输出：`📡 [HH:mm] 正在调用 API: GET https://hotspot.api4claw.com/hotspots/latest?timestamp=$TIME_STEMP`
    
 2. **必须使用 `web_fetch` 工具** 调用上述 URL（`extractMode: "text"`）
    - ⛔ 禁止假设、禁止缓存、禁止编造数据
@@ -91,7 +81,7 @@ This skill is only for Consumer behavior.
 
 Use this skill when users ask to:
 
-- read latest hotspot data from `/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP` (primary: JSON)
+- read latest hotspot data from `/hotspots/latest?timestamp=$TIME_STEMP` (primary: JSON)
 - get top items ranked by estimated click-through rate (with AI summaries)
 - view titles grouped by `source_name`
 - check hotspot service status
@@ -106,7 +96,7 @@ Base URL:
 
 Only endpoint:
 
-- `GET /hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`: 使用 **`web_fetch` 工具**（`extractMode: "text"`）获取最新热点 JSON 数据。调用前必须先生成分钟级 `TIME_STEMP`。返回 JSON 数组，每个元素是一个 source block（包含 `source`, `source_name`, `fetched_at`, `items[]`），每个 item 通常包含 `title`, `content`, `link`, `hotness`。**不要** 使用 `hotness` 展示或排序，仅用模型预估点击率排序 Top。
+- `GET /hotspots/latest?timestamp=$TIME_STEMP`: 使用 **`web_fetch` 工具**（`extractMode: "text"`）获取最新热点 JSON 数据。调用前必须先生成分钟级 `TIME_STEMP`。返回 JSON 数组，每个元素是一个 source block（包含 `source`, `source_name`, `fetched_at`, `items[]`），每个 item 通常包含 `title`, `content`, `link`, `hotness`。**不要** 使用 `hotness` 展示或排序，仅用模型预估点击率排序 Top。
 
 ## Consumer Workflow
 
@@ -114,13 +104,13 @@ For each user intent:
 
 - `latest hotspot`:
   1. 先生成分钟级 `TIME_STEMP`（示例：`TIME_STEMP="$(TZ=Asia/Shanghai date +%Y-%m-%dT%H:%M)"`）
-  2. **使用 `web_fetch` 工具** 调用 `GET https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`（`extractMode: "text"`）
+  2. **使用 `web_fetch` 工具** 调用 `GET https://hotspot.api4claw.com/hotspots/latest?timestamp=$TIME_STEMP`（`extractMode: "text"`）
   2. 如果返回内容是 JSON 数组，解析并扁平化所有 sources 的 `items[]`
   3. 构建 **Top (最多 10 条)** 列表：对每个 item，根据 `title` + `content` 内部估算 **预估点击率**（仅用于排序），按估算值降序排列，取前 10 条
   4. **不要** 使用 JSON 中的 `hotness` 字段排序或展示，**不要** 暴露 `hotness` 或「热度」字样
   5. 对每条 Top 内容，根据 `title` + `content` 写简洁的 AI 摘要（1-2 行，不编造）
   6. Top 部分之后，按 `source_name` 分组展示所有 item 的标题
-- `status`: 先生成分钟级 `TIME_STEMP`，再 **使用 `web_fetch` 工具** 调用 `GET https://hotspot.api4claw.com/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`，报告可达性 + 基础统计（source 数量、item 总数）。**不要** 展示 `fetched_at` 或 `data_date`
+- `status`: 先生成分钟级 `TIME_STEMP`，再 **使用 `web_fetch` 工具** 调用 `GET https://hotspot.api4claw.com/hotspots/latest?timestamp=$TIME_STEMP`，报告可达性 + 基础统计（source 数量、item 总数）。**不要** 展示 `fetched_at` 或 `data_date`
 - `source filter`: 按 `source`/`source_name` 过滤展示
 
 JSON grouping targets (if present):
@@ -134,7 +124,7 @@ JSON grouping targets (if present):
 
 Required:
 
-- `USER_ID`: auto-generated once and persisted at `~/.openclaw/hotspots/user_id` if absent.
+- No user identifier is required.
 
 Fixed:
 
@@ -164,12 +154,12 @@ When showing hotspot content, use this order:
 When showing status:
 
 - reachable or unreachable
-- endpoint used: `/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`
+- endpoint used: `/hotspots/latest?timestamp=$TIME_STEMP`
 - Do NOT show `fetched_at` or `data_date`
 
 ## Reliability Rules
 
-- If `/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP` fails, return explicit failure reason.
+- If `/hotspots/latest?timestamp=$TIME_STEMP` fails, return explicit failure reason.
 - Do not fabricate content when server is unreachable.
 - In JSON mode, skip malformed items safely and continue with valid items; report skipped count briefly if non-zero.
 - If response is not valid JSON, report format mismatch explicitly and stop.
@@ -179,5 +169,5 @@ When showing status:
 ## Security Rules
 
 - Do not expose tokens or secret headers in output.
-- Do not call any hotspot endpoint except `/hotspots/latest?userId=$USER_ID&&timestamp=$TIME_STEMP`.
-- Setup phase is allowed to write only `~/.openclaw/hotspots/user_id` and manage only the `hotspots-scheduled-shanghai` cron job.
+- Do not call any hotspot endpoint except `/hotspots/latest?timestamp=$TIME_STEMP`.
+- Do not persist identifiers or create background tasks unless the user explicitly requests and approves it.
